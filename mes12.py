@@ -53,21 +53,22 @@ class Environment:
         self.width = width
         self.height = height
         self.grid = np.zeros((height, width))  # Inicializa o grid com todas as células vazias
+        self.fig, self.ax = plt.subplots()  # Criar a figura e os eixos uma vez
 
     def add_obstacle(self, x, y):
         self.grid[y][x] = 1  # Define a célula como obstáculo
 
     def plot_environment(self, robot):
-        
-        plt.imshow(self.grid, cmap='binary')  # Plota o grid
-        plt.scatter(robot.x, robot.y, color='red', marker='o', label='Robot')  # Plota a posição do robô
-        plt.legend()
-        plt.title('Ambiente 2D Grid-based')
-        plt.xlabel('Posição X')
-        plt.ylabel('Posição Y')
-        plt.grid(True)
+        self.ax.clear()  # Limpa o eixo antes de plotar novamente
+        self.ax.imshow(self.grid, cmap='binary')  # Plota o grid
+        self.ax.scatter(robot.x, robot.y, color='red', marker='o', label='Robot')  # Plota a posição do robô
+        self.ax.legend()
+        self.ax.set_title('Ambiente 2D Grid-based')
+        self.ax.set_xlabel('Posição X')
+        self.ax.set_ylabel('Posição Y')
+        self.ax.grid(True)
         plt.show(block=False)
-        plt.pause(0.01)
+        plt.pause(1)  # Pausa para atualizar a interface gráfica
 
 # Função para capturar a entrada do teclado
 def get_key(stdscr):
@@ -78,6 +79,7 @@ def get_key(stdscr):
 env_width = 10
 env_height = 10
 environment = Environment(env_width, env_height)
+
 
 # Adicionando obstáculos ao ambiente (opcional)
 environment.add_obstacle(3, 5)
