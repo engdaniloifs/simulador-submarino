@@ -58,9 +58,15 @@ class Environment:
     def add_obstacle(self, x, y):
         self.grid[y][x] = 1  # Define a célula como obstáculo
 
+    def plot_arrow(self, robot):
+        arrow_map = {'up': (0, 0.5), 'down': (0, -0.5), 'left': (-0.5, 0), 'right': (0.5, 0)}
+        dx, dy = arrow_map[robot.direction]
+        self.ax.arrow(robot.x, robot.y, dx, dy, head_width=0.2, head_length=0.2, fc='k', ec='k')
+
     def plot_environment(self, robot):
         self.ax.clear()  # Limpa o eixo antes de plotar novamente
         self.ax.imshow(self.grid, cmap='binary')  # Plota o grid
+        self.plot_arrow(robot)  # Plota a seta indicando a direção do robô
         self.ax.scatter(robot.x, robot.y, color='red', marker='o', label='Robot')  # Plota a posição do robô
         self.ax.legend()
         self.ax.set_title('Ambiente 2D Grid-based')
@@ -80,7 +86,6 @@ env_width = 10
 env_height = 10
 environment = Environment(env_width, env_height)
 
-
 # Adicionando obstáculos ao ambiente (opcional)
 environment.add_obstacle(3, 5)
 environment.add_obstacle(7, 8)
@@ -92,7 +97,6 @@ robot = Robot(0, 0)
 environment.plot_environment(robot)
 
 # Mantém o programa rodando até que o usuário pressione 'q'
-
 while True:
     key = curses.wrapper(get_key)
    
