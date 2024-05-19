@@ -13,11 +13,12 @@ submarinevolume = 0.0032 # m^3
 submarinemass = 3.185 # kg
 gravity = 10 # m/s^2
 velocityinitial = 0
+syringestep = 0.03/18
 
 
 
 class Robot:
-    def __init__(self, x, z, syringemass, submarinemass, submarinevolume, velocity):
+    def __init__(self, x, z, syringemass, submarinemass, submarinevolume, velocity,):
         self.x = x
         self.z = z
         self.syringemass = syringemass
@@ -27,18 +28,18 @@ class Robot:
         
         
     def move_forward(self):
-        self.x += 1
+        self.x += 0.25
         
     def move_backward(self):
-        self.x -= 1 
+        self.x -= 0.25 
 
-    def move_float(self):
-        self.syringemass -= 0.015
+    def move_float(self, syringestep):
+        self.syringemass -= syringestep
         if self.syringemass <= 0: 
             self.syringemass = 0
 
-    def move_sink(self):
-        self.syringemass += 0.015
+    def move_sink(self, syringestep):
+        self.syringemass += syringestep
         if self.syringemass >= 0.030: 
             self.syringemass = 0.030
 
@@ -72,13 +73,19 @@ class Environment:
         self.width = width
         self.depth = depth
         self.grid = np.zeros((depth, width))  # Inicializa o grid com todas as células vazias
-        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2) # Criar a figura e os eixos uma vez
+        self.fig = plt.figure()# Criar a figura e os eixos uma vez
+        
+        self.ax1 = self.fig.add_subplot(211)
+        self.ax1.set_position([0.2, 0.35, 0.6, 0.6])
+        self.ax2 = self.fig.add_subplot(212, aspect=0.03, adjustable='box')
+        self.ax2.set_position([0.1, 0.1, 0.8, 0.1])
 
     def add_obstacle(self, x, z):
         self.grid[z][x] = 1  # Define a célula como obstáculo
 
     def plot_environment(self, robot):
         self.ax1.clear()  # Limpa o eixo antes de plotar novamente
+        
         self.ax1.imshow(self.grid, cmap='binary')  # Plota o grid
         self.ax1.scatter(robot.x, robot.z, color='red', marker='o', label='Robot')  # Plota a posição do robô
         self.ax1.legend()
@@ -87,7 +94,8 @@ class Environment:
         self.ax1.set_ylabel('Posição Z')  # Altera o rótulo do eixo y para Z
         self.ax1.set_ylim(-3, 0)  
         self.ax1.set_xlim(0, 3)
-         
+        self.ax1.set_xticks([0, 0.5, 1,  1.5, 2, 2.5, 3], 
+                            ['0', '0.5', '1',  '1.5', '2', '2.5', '3'])
         self.ax1.grid(True)
 
         #plt.subplot(1, 2, 2)
@@ -96,9 +104,10 @@ class Environment:
 
         #self.ax2.set_ylim(-0.1, 0.1)  # Define os limites do eixo y para a linha
         self.ax2.set_title('Seringa')
-
+        self.ax2.set_xlabel('Massa de água (kg)')
         self.ax2.set_xlim(0, 0.030)
-        self.ax2.set_xticks([0, 0.015, 0.030], ['0', '0.015', '0.030'])
+        self.ax2.set_xticks([0, 0.005, 0.010,  0.015, 0.020, 0.025, 0.030], 
+                            ['0', '0.005', '0.010',  '0.015', '0.020', '0.025', '0.030'])
         # Removendo as marcações do eixo vertical
         self.ax2.set_yticks([])
         
@@ -140,9 +149,9 @@ while True:
     key = curses.wrapper(get_key)
    
     if key == ord('w'):
-        robot.move_float()
+        robot.move_float(syringestep)
     elif key == ord('s'):
-        robot.move_sink()
+        robot.move_sink(syringestep)
     elif key == ord('a'):
         robot.move_backward()
     elif key == ord('d'):
