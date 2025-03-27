@@ -11,6 +11,7 @@ import time
 
 
 
+
 class Robot:
     def __init__(self, x, z, syringemass, submarinemass, submarinevolume):
         self.x = x
@@ -18,118 +19,121 @@ class Robot:
         self.syringemass = syringemass
         self.mass = submarinemass
         self.volume = submarinevolume
-        self.velocity = 0
+        self.velocity_x = 0  # Velocidade no eixo X
+        self.velocity_z = 0  # Velocidade no eixo Z
         self.acceleration = 0
-        
+        self.time_last_update = time.time()  # Para controle do tempo
         
     def move_forward(self):
-        self.x += 0.25
+        """Acelera suavemente para frente"""
+        self.velocity_x += 0.05  # Aumenta a velocidade gradualmente
         
     def move_backward(self):
-        self.x -= 0.25 
+        """Acelera suavemente para trás"""
+        self.velocity_x -= 0.05  # Aumenta a velocidade gradualmente no sentido oposto  
 
     def move_float(self, syringestep):
-        self.syringemass -= syringestep
-        if self.syringemass <= 0: 
-            self.syringemass = 0
+        """Reduz a massa da seringa para subir"""
+        self.syringemass = max(0, self.syringemass - syringestep)
 
     def move_sink(self, syringestep):
-        self.syringemass += syringestep
-        if self.syringemass >= 0.030: 
-            self.syringemass = 0.030
+        """Aumenta a massa da seringa para descer"""
+        self.syringemass = min(0.030, self.syringemass + syringestep)
 
-    def move_depth(self, waterdensity,time_initial, gravity):
-        self.acceleration = gravity*((waterdensity*self.volume)/(self.mass + self.syringemass)  -   1 )
-        
-        time_end = time.time()
-        deltatime = time_end - time_initial
+    def update_motion(self, waterdensity, gravity):
+        """Atualiza a posição X e Z do robô suavemente"""
+        time_now = time.time()
+        dt = time_now - self.time_last_update  # Tempo decorrido
+        self.time_last_update = time_now  # Atualiza o tempo
 
-        velocity = self.velocity + self.acceleration*deltatime
-        
-        self.z = self.z + velocity*deltatime + (self.acceleration*deltatime*deltatime)/2
-        self.velocity = velocity
+        # Atualiza posição X baseado na velocidade
+        self.x += self.velocity_x * dt  
+        self.velocity_x *= 0.95  # Simula resistência do meio (desaceleração)
 
-        
-        if self.z >= 0:
-            self.z = 0
-            self.velocity = 0
-        elif self.z <= -3:
-            self.z = -3
-            self.velocity = 0    
+        # Calcula aceleração na profundidade com base no empuxo
+        self.acceleration = gravity * ((waterdensity * self.volume) / (self.mass + self.syringemass) - 1)
+
+        # Atualiza velocidade e posição Z
+        self.velocity_z += self.acceleration * dt
+        self.z += self.velocity_z * dt + 0.5 * self.acceleration * dt**2
+
+        # Limites de profundidade
+        self.z = max(-3, min(0, self.z))
+        self.x = max(0, min(3, self.x))
+
+        if self.z == 0 or self.z == -3:
+            self.velocity_z = 0
+        if self.x == 0 or self.x == 3:
+            self.velocity_x = 0
 
 
 
 
 class Environment:
-    def __init__(self, width, depth):
+    def __init__(self, width, depth, aquario_img, submarine_img):
+         # Inicializa o grid com todas as células vazias
+        self.fig = plt.figure(figsize=(10, 6))  
+
+        # Adicionando subplots manualmente com posições definidas em [left, bottom, width, height]
+        self.ax1 = self.fig.add_axes([0.05, 0.35, 0.55, 0.6])  # Superior esquerdo
+        self.ax3 = self.fig.add_axes([0.65, 0.60, 0.30, 0.25])  # Superior direito
+        self.ax2 = self.fig.add_axes([0.10, 0.10, 0.80, 0.15])  # Inferior, ocupando a largura
+
+        # Configuração inicial do ambiente
         self.width = width
         self.depth = depth
-        self.grid = np.zeros((depth, width))  # Inicializa o grid com todas as células vazias
-        self.fig = plt.figure(figsize=(10, 6))# Criar a figura e os eixos uma vez
-        
-        self.ax1 = self.fig.add_subplot(221)
-        self.ax1.set_position([0.05, 0.35, 0.6, 0.6])
-        self.ax2 = self.fig.add_subplot(223, aspect=0.03, adjustable='box')
-        self.ax2.set_position([0.1, 0.1, 0.8, 0.1])
-        self.ax3 = self.fig.add_subplot(222)
-        self.ax3.set_position([0.6, 0.6, 0.35, 0.15])
-
-    def add_obstacle(self, x, z):
-        self.grid[z][x] = 1  # Define a célula como obstáculo
-
-    def plot_environment(self, robot):
-        self.ax1.clear()  # Limpa o eixo antes de plotar novamente
-
-        # Plota o fundo primeiro 
-
-        # Plota o grid
-        self.ax1.imshow(self.grid, cmap='binary',  zorder=0)  
-
-        self.ax1.imshow(aquario_img, extent=[0, 3, -3, 0], aspect='auto', zorder=1) 
-
-        # Define a posição onde a imagem do submarino será desenhada
-        img_extent = [robot.x - 0.15, robot.x + 0.15, robot.z - 0.1, robot.z + 0.1]  
-
-        # Plota a imagem do submarino sobre o fundo
-        self.ax1.imshow(submarine_img, extent=img_extent, aspect='auto', zorder=2)  # Maior zorder
         
 
-        # Configurações do gráfico
         self.ax1.set_title('Ambiente 2D Grid-based')
         self.ax1.set_xlabel('Position X (m)')
-        self.ax1.set_ylabel('Depth(m)')  # Altera o rótulo do eixo Y para Z
-        self.ax1.set_ylim(-3, 1)  
+        self.ax1.set_ylabel('Depth (m)')
+        self.ax1.set_ylim(-3, 1)
         self.ax1.set_xlim(0, 3)
-
-        # Definir os ticks do eixo X
-        self.ax1.set_xticks([0, 0.5, 1,  1.5, 2, 2.5, 3], 
-                            ['0', '0.5', '1',  '1.5', '2', '2.5', '3'])
-
+        self.ax1.set_xticks(np.arange(0, 3.5, 0.5))
         self.ax1.grid(True)
 
-        self.ax2.clear()
-        self.ax2.plot([0, robot.syringemass], [0, 0], 'k-', lw=5)  # Desenha uma linha horizontal
+        # Plota o fundo e salva a referência da imagem
+       
+        self.aquario_plot = self.ax1.imshow(aquario_img, extent=[0, 3, -3, 0], aspect='auto', zorder=0)
+        self.submarine_plot = self.ax1.imshow(submarine_img, extent=[0, 0, 0, 0], aspect='auto', zorder=1)  # Inicializa com extensão vazia
+
+        # Configuração do segundo gráfico (Syringe)
         self.ax2.set_title('Syringe')
         self.ax2.set_xlabel('Water mass (kg)')
         self.ax2.set_xlim(0, 0.030)
-        self.ax2.set_xticks([0, 0.005, 0.010,  0.015, 0.020, 0.025, 0.030], 
-                            ['0', '0.005', '0.010',  '0.015', '0.020', '0.025', '0.030'])
-        # Removendo as marcações do eixo vertical
+        self.ax2.set_xticks(np.linspace(0, 0.030, 7))
         self.ax2.set_yticks([])
-        
-        data = np.array([['Depth (m)', '{:.4f}'.format(robot.z)],
-                         ['Velocity (m/s)', '{:.4f}'.format(robot.velocity)],
-                         ['Acceleration (m/s^2)', '{:.4f}'.format(robot.acceleration)]])
-        self.ax3.clear()
-        table = self.ax3.table(cellText=data, colLabels=['Column1', 'Column2'], loc='center', cellLoc='center')
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 1)
+        self.syringe_line, = self.ax2.plot([], [], 'k-', lw=5)  # Inicializa a linha vazia
+
+        # Configuração do terceiro gráfico (tabela)
         self.ax3.axis('tight')
         self.ax3.axis('off')
+        self.table = None  # Inicializa a tabela
 
-       # plt.show(block=False)
-        plt.pause(0.01)  # Pausa para atualizar a interface gráfica
+    def update_environment(self, robot):
+        # Atualiza a posição da imagem do submarino
+        img_extent = [robot.x - 0.15, robot.x + 0.15, robot.z - 0.1, robot.z + 0.1]
+        self.submarine_plot.set_extent(img_extent)
+
+        # Atualiza o gráfico da seringa
+        self.syringe_line.set_data([0, robot.syringemass], [0, 0])
+
+        # Atualiza a tabela de informações
+        data = np.array([
+            ['Depth (m)', '{:.4f}'.format(robot.z)],
+            ['Velocity (m/s)', '{:.4f}'.format(robot.velocity_z)],
+            ['Acceleration (m/s^2)', '{:.4f}'.format(robot.acceleration)]
+        ])
+
+        if self.table:
+            self.table.remove()  # Remove a tabela antiga
+        self.table = self.ax3.table(cellText=data, loc='center', cellLoc='center')
+        self.table.auto_set_font_size(False)
+        self.table.set_fontsize(10)
+        self.table.scale(1, 1)
+
+        # Atualiza a interface gráfica sem limpar tudo
+        plt.pause(0.0001)
 
 # Função para capturar a entrada do teclado
 def get_key(stdscr):
@@ -140,7 +144,11 @@ def get_key(stdscr):
 # Criando o ambiente
 env_width = 3
 env_depth = 3
-environment = Environment(env_width, env_depth)
+submarine_img = plt.imread("D:\\Danilo\\projetos\\github\\simulador-submarino\\submarine.png")
+
+aquario_img = plt.imread("D:\\Danilo\\projetos\\github\\simulador-submarino\\aquario.png")
+
+environment = Environment(env_width, env_depth,aquario_img,submarine_img)
 
 x = 2
 z = -2
@@ -151,9 +159,7 @@ submarinemass = 3.185 # kg
 gravity = 10 # m/s^2
 syringestep = 0.03/18
 
-submarine_img = plt.imread("D:\\Danilo\\projetos\\github\\simulador-submarino\\submarine.png")
 
-aquario_img = plt.imread("D:\\Danilo\\projetos\\github\\simulador-submarino\\aquario.png")
 # Adicionando obstáculos ao ambiente (opcional)
 #environment.add_obstacle(3, 5)
 #environment.add_obstacle(7, 8)
@@ -164,7 +170,7 @@ robot = Robot(x, z, syringemass, submarinemass, submarinevolume)
 
 while True:
     time_initial = time.time()
-    environment.plot_environment(robot)
+    environment.update_environment(robot)
     
     key = curses.wrapper(get_key)
    
@@ -185,4 +191,4 @@ while True:
     else:
         print("Tecla inválida! Use as setas do teclado ou 'q' para sair.")
     # Visualizar o ambiente após cada movimento
-    robot.move_depth(waterdensity, time_initial, gravity)
+    robot.update_motion(waterdensity, gravity)
