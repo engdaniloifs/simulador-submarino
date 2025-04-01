@@ -6,12 +6,6 @@ import time
 
 #submarine and environmental specifications
 
-
-
-
-
-
-
 class Robot:
     def __init__(self, x, z, syringemass, submarinemass, submarinevolume):
         self.x = x
@@ -19,36 +13,51 @@ class Robot:
         self.syringemass = syringemass
         self.mass = submarinemass
         self.volume = submarinevolume
-        self.velocity_x = 0  # Velocidade no eixo X
-        self.velocity_z = 0  # Velocidade no eixo Z
+        self.velocity_x = 0  
+        self.velocity_z = 0  
         self.acceleration = 0
-        self.time_last_update = time.time()  # Para controle do tempo
+        self.time_last_update = time.time()  
+        self.syringe_velocity = 0.015  # 30g por segundo
+        self.syringe_target = self.syringemass  # Inicializa com o valor atual
+        self.setpointz = 0
         
+
     def move_forward(self):
-        """Acelera suavemente para frente"""
-        self.velocity_x += 0.05  # Aumenta a velocidade gradualmente
-        
+        self.velocity_x += 0.05  
+
     def move_backward(self):
-        """Acelera suavemente para trás"""
-        self.velocity_x -= 0.05  # Aumenta a velocidade gradualmente no sentido oposto  
+        self.velocity_x -= 0.05  
 
-    def move_float(self, syringestep):
-        """Reduz a massa da seringa para subir"""
-        self.syringemass = max(0, self.syringemass - syringestep)
+    def move_float(self):
+        """Reduz a massa da seringa em pequenos passos para subir"""
+        self.setpointz = self.setpointz + 0.5 
+        
 
-    def move_sink(self, syringestep):
-        """Aumenta a massa da seringa para descer"""
-        self.syringemass = min(0.030, self.syringemass + syringestep)
+    def move_sink(self):
+        """Aumenta a massa da seringa em pequenos passos para descer"""
+        self.setpointz = self.setpointz - 0.5 
+
 
     def update_motion(self, waterdensity, gravity):
-        """Atualiza a posição X e Z do robô suavemente"""
         time_now = time.time()
-        dt = time_now - self.time_last_update  # Tempo decorrido
-        self.time_last_update = time_now  # Atualiza o tempo
+        dt = time_now - self.time_last_update  
+        self.time_last_update = time_now  
 
         # Atualiza posição X baseado na velocidade
         self.x += self.velocity_x * dt  
-        self.velocity_x *= 0.95  # Simula resistência do meio (desaceleração)
+        self.velocity_x *= 0.95  
+
+        
+        self.syringe_target = 0.015 - (self.setpointz - self.z)*0.01
+        
+        self.syringe_target = max(0, min(self.syringe_target, 0.03))
+
+        
+        # Ajusta a massa da seringa suavemente
+        if self.syringemass < self.syringe_target:
+            self.syringemass = min(self.syringe_target, self.syringemass + self.syringe_velocity * dt)
+        elif self.syringemass > self.syringe_target:
+            self.syringemass = max(self.syringe_target, self.syringemass - self.syringe_velocity * dt)
 
         # Calcula aceleração na profundidade com base no empuxo
         self.acceleration = gravity * ((waterdensity * self.volume) / (self.mass + self.syringemass) - 1)
@@ -69,8 +78,10 @@ class Robot:
 
 
 
+
+
 class Environment:
-    def __init__(self, width, depth, aquario_img, submarine_img):
+    def __init__(self, width, depth, aquario_img, submarine_img, robot):
          # Inicializa o grid com todas as células vazias
         self.fig = plt.figure(figsize=(10, 6))  
 
@@ -103,12 +114,24 @@ class Environment:
         self.ax2.set_xlim(0, 0.030)
         self.ax2.set_xticks(np.linspace(0, 0.030, 7))
         self.ax2.set_yticks([])
-        self.syringe_line, = self.ax2.plot([], [], 'k-', lw=5)  # Inicializa a linha vazia
+        self.syringe_line, = self.ax2.plot([], [], 'b-', lw=5)  # Inicializa a linha vazia
 
         # Configuração do terceiro gráfico (tabela)
         self.ax3.axis('tight')
         self.ax3.axis('off')
         self.table = None  # Inicializa a tabela
+
+        data = [
+            ['Depth (m)', '{:.4f}'.format(robot.z)],
+            ['Velocity (m/s)', '{:.4f}'.format(robot.velocity_z)],
+            ['Acceleration (m/s²)', '{:.4f}'.format(robot.acceleration)]
+        ]
+        
+        self.table = self.ax3.table(cellText=data, loc='center', cellLoc='center')
+        self.table.auto_set_font_size(False)
+        self.table.set_fontsize(10)
+        self.table.scale(1, 1)
+        self.ax3.axis('off')
 
     def update_environment(self, robot):
         # Atualiza a posição da imagem do submarino
@@ -119,18 +142,9 @@ class Environment:
         self.syringe_line.set_data([0, robot.syringemass], [0, 0])
 
         # Atualiza a tabela de informações
-        data = np.array([
-            ['Depth (m)', '{:.4f}'.format(robot.z)],
-            ['Velocity (m/s)', '{:.4f}'.format(robot.velocity_z)],
-            ['Acceleration (m/s^2)', '{:.4f}'.format(robot.acceleration)]
-        ])
-
-        if self.table:
-            self.table.remove()  # Remove a tabela antiga
-        self.table = self.ax3.table(cellText=data, loc='center', cellLoc='center')
-        self.table.auto_set_font_size(False)
-        self.table.set_fontsize(10)
-        self.table.scale(1, 1)
+        self.table[(0, 1)].get_text().set_text('{:.4f}'.format(robot.z))
+        self.table[(1, 1)].get_text().set_text('{:.4f}'.format(robot.velocity_z))
+        self.table[(2, 1)].get_text().set_text('{:.4f}'.format(robot.acceleration))
 
         # Atualiza a interface gráfica sem limpar tudo
         plt.pause(0.0001)
@@ -148,24 +162,30 @@ submarine_img = plt.imread("D:\\Danilo\\projetos\\github\\simulador-submarino\\s
 
 aquario_img = plt.imread("D:\\Danilo\\projetos\\github\\simulador-submarino\\aquario.png")
 
-environment = Environment(env_width, env_depth,aquario_img,submarine_img)
 
-x = 2
-z = -2
+
+x = 1
+z = 0
 syringemass = 0
 waterdensity = 1000 #kg/m^3
 submarinevolume = 0.0032 # m^3
 submarinemass = 3.185 # kg
 gravity = 10 # m/s^2
-syringestep = 0.03/18
 
 
-# Adicionando obstáculos ao ambiente (opcional)
-#environment.add_obstacle(3, 5)
-#environment.add_obstacle(7, 8)
 
-# Criando o robô na posição inicial (0, 0)
+while True:
+    print("Use as teclas WASD para se movimentar")
+    print("Digite 'start' para começar a simulação")
+    
+    user_input = input()  # Agora o programa espera a entrada do usuário
+    
+    if user_input.lower() == "start":  
+        print("Simulação iniciada!")
+        break  # Sai do loop quando o usuário digitar "start"
+
 robot = Robot(x, z, syringemass, submarinemass, submarinevolume)
+environment = Environment(env_width, env_depth,aquario_img,submarine_img,robot)
 
 
 while True:
@@ -175,20 +195,16 @@ while True:
     key = curses.wrapper(get_key)
    
     if key == ord('w'):
-        robot.move_float(syringestep)
+        robot.move_float()
     elif key == ord('s'):
-        robot.move_sink(syringestep)
+        robot.move_sink()
     elif key == ord('a'):
         robot.move_backward()
     elif key == ord('d'):
         robot.move_forward()
-    elif key == -1:
-        print("Pressione uma tecla")
     elif key == ord('q'):
         print("Obrigado por jogar!")
         break
     
-    else:
-        print("Tecla inválida! Use as setas do teclado ou 'q' para sair.")
     # Visualizar o ambiente após cada movimento
-    robot.update_motion(waterdensity, gravity)
+    robot.update_motion(waterdensity, gravity)  
