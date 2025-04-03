@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import curses  # Importa a biblioteca para capturar a entrada do teclado
 import time
 
 
@@ -12,50 +11,66 @@ class Robot:
         self.z = z
         self.syringemass = syringemass
         self.mass = submarinemass
-        self.volume = submarinevolume
-        self.velocity_x = 0  
+        self.volume = submarinevolume 
         self.velocity_z = 0  
         self.acceleration = 0
         self.time_last_update = time.time()  
         self.syringe_velocity = 0.015  # 30g por segundo
         self.syringe_target = self.syringemass  # Inicializa com o valor atual
         self.setpointz = 0
+        self.kp = 0.020 
+        self.ki = 0.0000
+        self.kd = 0.22
         
-
-    def move_forward(self):
-        self.velocity_x += 0.05  
-
-    def move_backward(self):
-        self.velocity_x -= 0.05  
-
-    def move_float(self):
-        """Reduz a massa da seringa em pequenos passos para subir"""
-        self.setpointz = self.setpointz + 0.5 
-        
-
-    def move_sink(self):
-        """Aumenta a massa da seringa em pequenos passos para descer"""
-        self.setpointz = self.setpointz - 0.5 
+        self.error_integral = 0
+        self.prev_error = 0
+        #self.kd = [0.05,0.06, 0.07, 0.08, 0.09]
+        self.syringe_neutral = 0.015
 
 
-    def update_motion(self, waterdensity, gravity):
+
+
+
+    def update_motion(self, waterdensity, gravity,i):
         time_now = time.time()
         dt = time_now - self.time_last_update  
         self.time_last_update = time_now  
 
         # Atualiza posição X baseado na velocidade
-        self.x += self.velocity_x * dt  
-        self.velocity_x *= 0.95  
 
-        error = - (self.setpointz - self.z)
 
-        Kp = 0.005
-        
-        self.syringe_target = 0.015 + error*Kp
-        
+        error = -(self.setpointz - self.z)
+
+        # Atualiza o erro acumulado (integral)
+        self.error_integral += error * dt  
+
+        # Calcula a derivada do erro
+        error_derivative = (error - self.prev_error) / dt  
+
+        # Controle PID (P + I + D)
+        self.syringe_target = self.syringe_neutral + (error * self.kp) + (self.error_integral * self.ki) + (error_derivative * self.kd)
+
+        # Garante que o valor fique dentro dos limites
+        if abs(self.syringemass - self.syringe_target) > 0.0083:
+            if self.syringemass > self.syringe_target:
+                self.syringe_target = self.syringemass - 0.0083
+            else:
+                self.syringe_target = self.syringemass + 0.0083
+
+        if abs(self.syringemass - self.syringe_target) < 0.00083:
+            self.syringe_target = self.syringemass
+        testeservo = self.syringe_target*6000
+
+        self.syringe_target = int(testeservo)/6000
+
         self.syringe_target = max(0, min(self.syringe_target, 0.03))
 
+        # Atualiza o erro anterior para a próxima iteração
+        self.prev_error = error  
+
         
+
+
         # Ajusta a massa da seringa suavemente
         if self.syringemass < self.syringe_target:
             self.syringemass = min(self.syringe_target, self.syringemass + self.syringe_velocity * dt)
@@ -71,29 +86,27 @@ class Robot:
 
         # Limites de profundidade
         self.z = max(-3, min(0, self.z))
-        self.x = max(0, min(3, self.x))
 
         if self.z == 0 or self.z == -3:
             self.velocity_z = 0
-        if self.x == 0 or self.x == 3:
-            self.velocity_x = 0
-
 
 
 
 class Environment:
     def __init__(self, width, depth, aquario_img, submarine_img, robot):
-        self.fig = plt.figure(figsize=(10, 6))  
-
-        # Adicionando subplots manualmente com posições definidas em [left, bottom, width, height]
-        self.ax1 = self.fig.add_axes([0.05, 0.35, 0.55, 0.6])  # Superior esquerdo
-        self.ax3 = self.fig.add_axes([0.65, 0.60, 0.30, 0.25])  # Superior direito
-        self.ax2 = self.fig.add_axes([0.10, 0.10, 0.80, 0.15])  # Inferior, ocupando a largura
-
-        # Configuração inicial do ambiente
+        
+        self.fig = plt.figure(figsize=(12, 6))
+        
+        self.ax1 = self.fig.add_axes([0.05, 0.55, 0.4, 0.4])  # Submarino
+        self.ax4 = self.fig.add_axes([0.55, 0.55, 0.4, 0.4])  # Gráfico de profundidade
+        self.ax2 = self.fig.add_axes([0.05, 0.35, 0.9, 0.1])  # Seringa
+        self.ax3 = self.fig.add_axes([0.4, 0.05, 0.25, 0.3])  # Tabela
+        
+        
+        # Configuração do ambiente 2D
         self.width = width
         self.depth = depth
-
+        
         self.ax1.set_title('Ambiente 2D Grid-based')
         self.ax1.set_xlabel('Position X (m)')
         self.ax1.set_ylabel('Depth (m)')
@@ -101,24 +114,22 @@ class Environment:
         self.ax1.set_xlim(0, 3)
         self.ax1.set_xticks(np.arange(0, 3.5, 0.5))
         self.ax1.grid(True)
-
-        # Plota o fundo e salva a referência da imagem
+        
         self.aquario_plot = self.ax1.imshow(aquario_img, extent=[0, 3, -3, 0], aspect='auto', zorder=0)
-        self.submarine_plot = self.ax1.imshow(submarine_img, extent=[0, 0, 0, 0], aspect='auto', zorder=1)  # Inicializa com extensão vazia
-
-        # Configuração do segundo gráfico (Syringe)
+        self.submarine_plot = self.ax1.imshow(submarine_img, extent=[0, 0, 0, 0], aspect='auto', zorder=1)
+        
+        # Configuração do gráfico da seringa
         self.ax2.set_title('Syringe')
         self.ax2.set_xlabel('Water mass (kg)')
         self.ax2.set_xlim(0, 0.030)
         self.ax2.set_xticks(np.linspace(0, 0.030, 7))
         self.ax2.set_yticks([])
-        self.syringe_line, = self.ax2.plot([], [], 'b-', lw=5)  # Inicializa a linha vazia
-
-        # Configuração do terceiro gráfico (tabela)
+        self.syringe_line, = self.ax2.plot([], [], 'b-', lw=5)
+        
+        # Configuração da tabela
         self.ax3.axis('tight')
         self.ax3.axis('off')
-        self.table = None  # Inicializa a tabela
-
+        
         data = [
             ['Depth (m)', '{:.4f}'.format(robot.z)],
             ['Velocity (m/s)', '{:.4f}'.format(robot.velocity_z)],
@@ -129,60 +140,56 @@ class Environment:
         self.table.auto_set_font_size(False)
         self.table.set_fontsize(10)
         self.table.scale(1, 1)
-
-        # Configuração do quarto gráfico (Eixo Z ao longo do tempo)
-        self.fig4 = plt.figure(figsize=(4, 4))
-        self.ax4 = self.fig4.add_subplot(111)
+        
+        # Configuração do gráfico de profundidade ao longo do tempo
         self.ax4.set_title('Eixo Z ao longo do Tempo')
         self.ax4.set_xlabel('Tempo (s)')
         self.ax4.set_ylabel('Profundidade (m)')
-        self.ax4.set_xlim(0, 120)  # Limite do tempo de 0 a 120 segundos
-        self.ax4.set_ylim(-3, 0)   # Limite da profundidade de -3 a 0 metros
+        self.ax4.set_xlim(0, 120)
+        self.ax4.set_ylim(-3, 0)
         self.ax4.grid(True)
+        
+        
+        self.setpoint_line, = self.ax4.plot([0, 120], [robot.setpointz, robot.setpointz], 'g--', lw=2, label='Setpoint')
 
-        # Inicializa os dados para o gráfico do eixo Z
-        self.time_data = []
-        self.z_data = []
-        self.z_line, = self.ax4.plot(self.time_data, self.z_data, 'r-', lw=2, label='Profundidade')
+        colors = ['b', 'c', 'm', 'y', 'k']  # Azul, Ciano, Magenta, Amarelo, Preto
 
-        # Linha do setpoint
-        self.setpoint_line, = self.ax4.plot([], [], 'g--', lw=2, label='Setpoint')
-
+        self.kp_lines = []
+        self.kp_time_data = [[] for _ in range(5)]  # Inicializa listas separadas para tempo
+        self.kp_depth_data = [[] for _ in range(5)]  # Inicializa listas separadas para profundidade
+        
+        for i, color in enumerate(colors):
+            line, = self.ax4.plot(self.kp_time_data[i], self.kp_depth_data[i], color=color, lw=2, label=f'Kp = {robot.kp}')
+            self.kp_lines.append(line)
+        
         self.ax4.legend()
-
-    def update_environment(self, robot, time):
-        # Atualiza a posição da imagem do submarino
+    
+    def update_environment(self, robot, time, i):
         img_extent = [robot.x - 0.15, robot.x + 0.15, robot.z - 0.1, robot.z + 0.1]
         self.submarine_plot.set_extent(img_extent)
-
-        # Atualiza o gráfico da seringa
+        
         self.syringe_line.set_data([0, robot.syringemass], [0, 0])
-
-        # Atualiza a tabela de informações
+        
         self.table[(0, 1)].get_text().set_text('{:.4f}'.format(robot.z))
         self.table[(1, 1)].get_text().set_text('{:.4f}'.format(robot.velocity_z))
         self.table[(2, 1)].get_text().set_text('{:.4f}'.format(robot.acceleration))
+        
+        self.kp_time_data[i].append(time)  # Adiciona o tempo correspondente
+        self.kp_depth_data[i].append(robot.z)  # Adiciona a profundidade correspondente
+        
+        # Atualiza a linha correspondente no gráfico
+        self.kp_lines[i].set_data(self.kp_time_data[i], self.kp_depth_data[i])
 
-        # Atualiza os dados do eixo Z ao longo do tempo
-        self.time_data.append(time)
-        self.z_data.append(robot.z)
-
-        self.z_line.set_data(self.time_data, self.z_data)
-
-        # Atualiza a linha do setpoint
-        self.setpoint_line.set_data(self.time_data, [robot.setpointz] * len(self.time_data))
-
+        
+        
         self.ax4.relim()
         self.ax4.autoscale_view()
-
-        # Atualiza a interface gráfica sem limpar tudo
+        
         plt.pause(0.0001)
 
 
-# Função para capturar a entrada do teclado
-def get_key(stdscr):
-    stdscr.nodelay(True)  # Configura para não bloquear
-    return stdscr.getch()
+
+
 
 
 # Criando o ambiente
@@ -215,26 +222,23 @@ while True:
         break  # Sai do loop quando o usuário digitar "start"
 
 robot = Robot(x, z, syringemass, submarinemass, submarinevolume)
+robot.setpointz = -0.5
 environment = Environment(env_width, env_depth,aquario_img,submarine_img,robot)
-time_initial = time.time()
 
-while True:
-    time_graph = time.time() - time_initial
-    environment.update_environment(robot,time_graph)
+for i in range(5):  # Vai de 0 a 4
+    time_initial = time.time()
+    robot.z = 0
     
-    key = curses.wrapper(get_key)
-   
-    if key == ord('w'):
-        robot.move_float()
-    elif key == ord('s'):
-        robot.move_sink()
-    elif key == ord('a'):
-        robot.move_backward()
-    elif key == ord('d'):
-        robot.move_forward()
-    elif key == ord('q'):
-        print("Obrigado por jogar!")
-        break
-    
-    # Visualizar o ambiente após cada movimento
-    robot.update_motion(waterdensity, gravity)  
+    while True:
+        time_graph = time.time() - time_initial
+        environment.update_environment(robot,time_graph,i)
+        
+        # Visualizar o ambiente após cada movimento
+        robot.update_motion(waterdensity, gravity,i) 
+
+        time.sleep(0.01)
+        if(time_graph >= 120):
+            break
+
+    while True:
+        print("espere")
