@@ -18,13 +18,20 @@ class Robot:
         self.syringe_velocity = 0.015  # 30g por segundo
         self.syringe_target = self.syringemass  # Inicializa com o valor atual
         self.setpointz = 0
-        self.kp = 0.020 
-        self.ki = 0.0000
-        self.kd = 0.22
+        #Constantes para o sistema superamortecido
+        #self.kp = 0.027
+        #self.ki = 0.0001
+        #self.kd = 0.20
+        #Constantes calculadas com o método Ziegler-Nichols
         
+        self.kp = 0.027
+        self.ki = 0.001728
+        self.kd = 0.10547
+
+
         self.error_integral = 0
         self.prev_error = 0
-        #self.kd = [0.05,0.06, 0.07, 0.08, 0.09]
+        
         self.syringe_neutral = 0.015
 
 
@@ -222,7 +229,7 @@ while True:
         break  # Sai do loop quando o usuário digitar "start"
 
 robot = Robot(x, z, syringemass, submarinemass, submarinevolume)
-robot.setpointz = -0.5
+robot.setpointz = -1.5
 environment = Environment(env_width, env_depth,aquario_img,submarine_img,robot)
 
 for i in range(5):  # Vai de 0 a 4
